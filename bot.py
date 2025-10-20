@@ -22,6 +22,8 @@ BANNED_IDS_STR = os.environ.get("BANNED_IDS", "")
 BANNED_LIST = BANNED_IDS_STR.split(',')
 YOUTUBE_COOKIES_TEXT = os.environ.get("YOUTUBE_COOKIES")
 TWITTER_COOKIES_TEXT = os.environ.get("TWITTER_COOKIES") 
+# --- !! إضافة كوكيز تيك توك !! ---
+TIKTOK_COOKIES_TEXT = os.environ.get("TIKTOK_COOKIES")
 MAX_FILE_SIZE = 48 * 1024 * 1024 
 
 # --- تعريف "حالات" المحادثة ---
@@ -46,7 +48,7 @@ async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Error sending log to channel: {e}")
 
-# (دالة /start)
+# (دوال /start و /help - كما هي)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_html(
@@ -59,7 +61,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_log(f"🚀 **Bot Started**\n{user_info}", context)
     return ConversationHandler.END
 
-# (دالة /help)
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "فقط أرسل رابط فيديو (تيك توك)، (يوتيوب) أو (تويتر/X) 🔗"
@@ -70,17 +71,11 @@ def cleanup_file(path):
     if os.path.exists(path):
         os.remove(path)
 
-# -----------------------------------------------------------------
-# ------------------!! بداية المنطق الجديد !!-----------------------
-# -----------------------------------------------------------------
-
 # (المرحلة 1: عند إرسال رابط يوتيوب)
 async def youtube_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يسأل المستخدم عن الصيغة المطلوبة (فيديو أم صوت)"""
     message_text = update.message.text
-    context.user_data['url'] = message_text # تخزين الرابط مؤقتاً
+    context.user_data['url'] = message_text 
     
-    # --- !! تم تغيير الأزرار هنا !! ---
     keyboard = [
         [InlineKeyboardButton("🎬 1080p (أعلى جودة)", callback_data='v_1080')],
         [InlineKeyboardButton("🎬 720p (جودة عالية)", callback_data='v_720')],
@@ -89,14 +84,14 @@ async def youtube_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text('اختر الجودة المطلوبة:', reply_markup=reply_markup)
-    return CHOOSE_FORMAT # الانتقال للمرحلة التالية (انتظار الضغط)
+    return CHOOSE_FORMAT 
 
 # (المرحلة 2: عند الضغط على زر الصيغة)
 async def format_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer() 
     
-    chosen_format = query.data # ('v_1080', 'v_720', or 'audio_mp3')
+    chosen_format = query.data 
     context.user_data['format'] = chosen_format
     
     await query.edit_message_text(text=f"تم اختيار {chosen_format}. ⏳ جاري التحميل...")
@@ -107,7 +102,7 @@ async def format_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # (المرحلة 1: عند إرسال رابط تيك توك أو تويتر)
 async def other_links_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['url'] = update.message.text
-    context.user_data['format'] = 'v_best' # (أفضل جودة متاحة لتيك توك/تويتر)
+    context.user_data['format'] = 'v_best' # (أفضل جودة متاحة)
     
     await update.message.reply_text("...⏳ جاري تحميل الفيديو (بأعلى جودة)، يرجى الانتظار...")
     
@@ -126,7 +121,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_target.reply_text("حدث خطأ، يرجى إعادة إرسال الرابط.")
         return
 
-    # تحديد إعدادات الكوكيز
+    # --- !! تعديل الكود الذكي لاختيار الكوكيز (ليشمل تيك توك) !! ---
     cookie_file_path = 'cookies.txt'
     cookie_opts = {}
     cleanup_file(cookie_file_path)
@@ -137,6 +132,10 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif ("twitter.com" in url or "x.com" in url) and TWITTER_COOKIES_TEXT:
             with open(cookie_file_path, 'w') as f: f.write(TWITTER_COOKIES_TEXT)
             cookie_opts = {'cookiefile': cookie_file_path}
+        elif ("tiktok.com" in url) and TIKTOK_COOKIES_TEXT: # <-- !! الإضافة الجديدة !!
+            with open(cookie_file_path, 'w') as f: f.write(TIKTOK_COOKIES_TEXT)
+            cookie_opts = {'cookiefile': cookie_file_path}
+            
     except Exception as e:
         print(f"Error writing cookie file: {e}")
 
@@ -159,7 +158,6 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             base_name = "final_video"
             output_path = f"{base_name}.mp4"
             
-            # --- !! منطق اختيار الجودة !! ---
             if chosen_format == 'v_1080':
                 format_string = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
             elif chosen_format == 'v_720':
@@ -179,7 +177,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        time.sleep(2) # انتظار لضمان إغلاق الملف
+        time.sleep(2) 
 
         # --- فحص الملف بعد التحميل ---
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
@@ -196,14 +194,13 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await send_log(f"✅ **Sent File ({chosen_format})**\nUser: {user.first_name}\nLink: `{url}`", context)
             
             else:
-                # --- الحل 2: إرسال الرابط (أكبر من 50 ميجا) ---
+                # --- الحل 2: إrsal الرابط (أكبر من 50 ميجا) ---
                 file_size_mb = file_size // 1024 // 1024
                 await reply_target.reply_text(
                     f"عذراً، الملف كبير جداً ({file_size_mb} MB). 😅\n"
                     "جاري جلب رابط تحميل مباشر (بجودة 720p كحد أقصى)..."
                 )
                 
-                # جلب الرابط المباشر (بجودة 720p كخيار آمن ومضمون)
                 link_opts = {
                     'format': 'best[ext=mp4][height<=720]/best[height<=720]',
                     'quiet': True,
@@ -243,7 +240,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """الدالة الرئيسية لتشغيل البوت."""
-    print("🤖 البوت قيد التشغيل (بإصدار v4 - اختيار الجودة)...")
+    print("🤖 البوت قيد التشغيل (بإصدار v5 - إضافة كوكيز تيك توك)...")
     
     application = Application.builder().token(TOKEN).build()
     
