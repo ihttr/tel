@@ -22,7 +22,6 @@ BANNED_IDS_STR = os.environ.get("BANNED_IDS", "")
 BANNED_LIST = BANNED_IDS_STR.split(',')
 YOUTUBE_COOKIES_TEXT = os.environ.get("YOUTUBE_COOKIES")
 TWITTER_COOKIES_TEXT = os.environ.get("TWITTER_COOKIES") 
-# --- !! إضافة كوكيز تيك توك !! ---
 TIKTOK_COOKIES_TEXT = os.environ.get("TIKTOK_COOKIES")
 MAX_FILE_SIZE = 48 * 1024 * 1024 
 
@@ -121,7 +120,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_target.reply_text("حدث خطأ، يرجى إعادة إرسال الرابط.")
         return
 
-    # --- !! تعديل الكود الذكي لاختيار الكوكيز (ليشمل تيك توك) !! ---
+    # --- الكود الذكي لاختيار الكوكيز ---
     cookie_file_path = 'cookies.txt'
     cookie_opts = {}
     cleanup_file(cookie_file_path)
@@ -132,7 +131,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif ("twitter.com" in url or "x.com" in url) and TWITTER_COOKIES_TEXT:
             with open(cookie_file_path, 'w') as f: f.write(TWITTER_COOKIES_TEXT)
             cookie_opts = {'cookiefile': cookie_file_path}
-        elif ("tiktok.com" in url) and TIKTOK_COOKIES_TEXT: # <-- !! الإضافة الجديدة !!
+        elif ("tiktok.com" in url) and TIKTOK_COOKIES_TEXT: 
             with open(cookie_file_path, 'w') as f: f.write(TIKTOK_COOKIES_TEXT)
             cookie_opts = {'cookiefile': cookie_file_path}
             
@@ -144,19 +143,17 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     output_path = ""
     try:
         if chosen_format == 'audio_mp3':
-            base_name = "final_audio"
-            output_path = f"{base_name}.mp3"
+            output_path = "final_audio.mp3" # <-- !! تحديد المسار بالامتداد !!
             ydl_opts = {
                 'format': 'bestaudio/best',
-                'outtmpl': base_name,
+                'outtmpl': output_path, # <-- !! الإصلاح: استخدام المسار الكامل !!
                 'postprocessors': [{ 'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192', }],
                 'quiet': False,
                 **cookie_opts
             }
         
         else: # (طلبات الفيديو)
-            base_name = "final_video"
-            output_path = f"{base_name}.mp4"
+            output_path = "final_video.mp4" # <-- !! تحديد المسار بالامتداد !!
             
             if chosen_format == 'v_1080':
                 format_string = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
@@ -167,9 +164,9 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             ydl_opts = {
                 'format': format_string,
-                'outtmpl': base_name, 
+                'outtmpl': output_path, # <-- !! الإصلاح: استخدام المسار الكامل !!
                 'quiet': False, 
-                'merge_output_format': 'mp4', 
+                'merge_output_format': 'mp4', # (هذا سيعمل عند الدمج)
                 **cookie_opts
             }
 
@@ -180,6 +177,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time.sleep(2) 
 
         # --- فحص الملف بعد التحميل ---
+        # (هذا الفحص سيعمل الآن لأن output_path صحيح)
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             file_size = os.path.getsize(output_path)
             
@@ -194,7 +192,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await send_log(f"✅ **Sent File ({chosen_format})**\nUser: {user.first_name}\nLink: `{url}`", context)
             
             else:
-                # --- الحل 2: إrsal الرابط (أكبر من 50 ميجا) ---
+                # --- الحل 2: إرسال الرابط (أكبر من 50 ميجا) ---
                 file_size_mb = file_size // 1024 // 1024
                 await reply_target.reply_text(
                     f"عذراً، الملف كبير جداً ({file_size_mb} MB). 😅\n"
@@ -240,7 +238,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """الدالة الرئيسية لتشغيل البوت."""
-    print("🤖 البوت قيد التشغيل (بإصدار v5 - إضافة كوكيز تيك توك)...")
+    print("🤖 البوت قيد التشغيل (بإصدار v6 - إصلاح اسم الملف)...")
     
     application = Application.builder().token(TOKEN).build()
     
