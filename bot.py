@@ -20,7 +20,7 @@ BANNED_IDS_STR = os.environ.get("BANNED_IDS", "")
 BANNED_LIST = BANNED_IDS_STR.split(',')
 YOUTUBE_COOKIES_TEXT = os.environ.get("YOUTUBE_COOKIES")
 TWITTER_COOKIES_TEXT = os.environ.get("TWITTER_COOKIES") 
-MAX_FILE_SIZE = 0
+MAX_FILE_SIZE = 1000 * 1024 * 1024
 
 # (جدار الحماية الخاص بالحظر)
 async def check_ban_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -223,6 +223,7 @@ def main():
 if __name__ == "__main__":
     main()
     
+
 
 
 
