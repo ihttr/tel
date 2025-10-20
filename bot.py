@@ -197,7 +197,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await responder.message.reply_video(video=open(output_path, 'rb'), caption=caption)
                 
-                await send_log(f"✅ **Sent File ({chosen_format})**\nUser: {user.first_name}\nLink: `{url}`", context)
+                await send_log(f"✅ **Sent File ({chosen_format})**\nUser: {user.first_name} , ID: {user.id} \nLink: `{url}`", context)
             
             else:
                 # --- !! الحل 2: إرسال الرابط (أكبر من 50 ميجا) !! ---
@@ -219,13 +219,13 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if 'url' in info:
                         direct_link = info['url']
                         await responder.message.reply_text(f"🔗 تفضل الرابط المباشر (صالح لبضع دقائق فقط):\n\n`{direct_link}`", parse_mode='Markdown')
-                        await send_log(f"✅ **Sent Link ({chosen_format})**\nUser: {user.first_name}\nLink: `{url}`", context)
+                        await send_log(f"✅ **Sent Link ({chosen_format})**\nUser: {user.first_name} ,ID: {user.id} \nLink: `{url}`", context)
                     else:
                         await responder.message.reply_text("عذراً، فشلت في جلب الرابط المباشر. 😕")
 
         else:
             await responder.message.reply_text("عذراً، لم أستطع تحميل الملف (الملف فارغ بعد الانتظار). 😕")
-            await send_log(f"❌ **Failed (Empty File)**\nLink: {url}", context)
+            await send_log(f"❌ **Failed (Empty File)** , ID: {user.id}\nLink: {url}", context)
 
     except Exception as e:
         print(f"حدث خطأ: {e}")
@@ -288,3 +288,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
