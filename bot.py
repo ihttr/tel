@@ -1,6 +1,6 @@
 import os
 import yt_dlp
-import time # <-- !! إضافة جديدة لحل مشكلة السباق !!
+import time
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -40,22 +40,25 @@ async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Error sending log to channel: {e}")
 
-# (دوال /start و /help - كما هي)
+# (دالة /start)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_html(
         rf"أهلاً {user.mention_html()}! 👋",
         reply_markup=None
     )
+    # --- !! تم تعديل النص هنا !! ---
     await update.message.reply_text(
-        "أرسل لي أي رابط فيديو من (تيك توك) أو (يوتيوب) وسأقوم بإرساله لك. 🎬"
+        "أرسل لي أي رابط فيديو من (تيك توك)، (يوتيوب) أو (تويتر/X) وسأقوم بإرساله لك. 🎬"
     )
     user_info = f"User: {user.first_name} (@{user.username}, ID: {user.id})"
     await send_log(f"🚀 **Bot Started**\n{user_info}", context)
 
+# (دالة /help)
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # --- !! تم تعديل النص هنا !! ---
     await update.message.reply_text(
-        "فقط أرسل رابط فيديو تيك توك أو يوتيوب 🔗"
+        "فقط أرسل رابط فيديو (تيك توك)، (يوتيوب) أو (تويتر/X) 🔗"
     )
 
 # دالة مساعدة لحذف الملف
@@ -68,19 +71,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text
     user = update.effective_user
     
-    if "tiktok.com" in message_text or "youtube.com" in message_text or "youtu.be" in message_text:
+    # --- !! تم تعديل الشرط هنا ليشمل تويتر/X !! ---
+    is_valid_link = (
+        "tiktok.com" in message_text or
+        "youtube.com" in message_text or
+        "youtu.be" in message_text or
+        "twitter.com" in message_text or
+        "x.com" in message_text
+    )
+    
+    if is_valid_link:
         
         await update.message.reply_text("...⏳ جاري تحميل الفيديو (بأعلى جودة)، يرجى الانتظار...")
         
-        # --- !! تعديل طريقة تعريف المسار !! ---
-        video_base_name = "final_video" # الاسم بدون امتداد
-        video_path = f"{video_base_name}.mp4" # المسار الذي سنتحقق منه
+        video_base_name = "final_video" 
+        video_path = f"{video_base_name}.mp4" 
         
         cleanup_file(video_path)
         
         cookie_file_path = 'cookies.txt'
         cookie_opts = {}
-        if YOUTUBE_COOKIES_TEXT:
+        if YOUTUBE_COOKIES_TEXT: # (ملاحظة: هذه الكوكيز لليوتيوب فقط، تويتر سيعمل بدونها للمقاطع العامة)
             try:
                 with open(cookie_file_path, 'w') as f:
                     f.write(YOUTUBE_COOKIES_TEXT)
@@ -92,19 +103,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # --- المحاولة الأولى: تحميل أعلى جودة ---
             ydl_opts_best = {
                 'format': 'bestvideo+bestaudio/best',
-                'outtmpl': video_base_name, # <-- نستخدم الاسم الأساسي فقط
+                'outtmpl': video_base_name, 
                 'quiet': False, 
-                'merge_output_format': 'mp4', # <-- هذا سيجبر الامتداد أن يكون mp4
+                'merge_output_format': 'mp4', 
                 **cookie_opts 
             }
 
             with yt_dlp.YoutubeDL(ydl_opts_best) as ydl:
                 ydl.download([message_text])
 
-            # --- !! إضافة تأخير (Delay) لحل مشكلة السباق !! ---
-            time.sleep(2) # انتظر ثانيتين لضمان إغلاق الملف
+            time.sleep(2) 
 
-            # --- التحقق من الحجم ---
             if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                 file_size = os.path.getsize(video_path)
                 
@@ -128,16 +137,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # --- المحاولة الثانية: تحميل نسخة أصغر ---
                     ydl_opts_small = {
                         'format': 'best[filesize<48M]/bestvideo[filesize<48M]+bestaudio[filesize<48M]',
-                        'outtmpl': video_base_name, # <-- نستخدم الاسم الأساسي
+                        'outtmpl': video_base_name, 
                         'quiet': False, 
-                        'merge_output_format': 'mp4', # <-- نجبر الامتداد
+                        'merge_output_format': 'mp4', 
                         **cookie_opts
                     }
                     
                     with yt_dlp.YoutubeDL(ydl_opts_small) as ydl_small:
                         ydl_small.download([message_text])
                     
-                    time.sleep(2) # <-- نضيف التأخير هنا أيضاً
+                    time.sleep(2) 
 
                     if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                         with open(video_path, 'rb') as video_file_small:
@@ -151,7 +160,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await send_log(f"❌ **Failed (Too Large)**\nUser: {user.first_name}\nLink: `{message_text}`", context)
 
             else:
-                # إذا وصلنا هنا، فالمشكلة ليست من السباق، بل التحميل فشل فعلاً
                 await update.message.reply_text("عذراً، لم أستطع تحميل الفيديو (الملف فارغ بعد الانتظار). 😕")
                 await send_log(f"❌ **Failed (Empty File)**\nLink: {message_text}", context)
 
@@ -165,14 +173,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cleanup_file(cookie_file_path)
             
     else:
+        # --- !! تم تعديل النص هنا !! ---
         await update.message.reply_text(
-            "الرجاء إرسال رابط تيك توك أو يوتيوب صحيح. 🔗"
+            "الرجاء إرسال رابط (تيك توك)، (يوتيوب) أو (تويتر/X) صحيح. 🔗"
         )
 
 
 def main():
     """الدالة الرئيسية لتشغيل البوت."""
-    print("🤖 البوت قيد التشغيل (TikTok + YouTube + Cookies)...")
+    print("🤖 البوت قيد التشغيل (TikTok + YouTube + Twitter/X)...")
     
     application = Application.builder().token(TOKEN).build()
     
