@@ -70,20 +70,25 @@ def cleanup_file(path):
     if os.path.exists(path):
         os.remove(path)
 
+# -----------------------------------------------------------------
+# ------------------!! بداية المنطق الجديد !!-----------------------
+# -----------------------------------------------------------------
+
 # (المرحلة 1: عند إرسال رابط يوتيوب)
 async def youtube_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يسأل المستخدم عن الصيغة المطلوبة (فيديو أم صوت)"""
     message_text = update.message.text
     context.user_data['url'] = message_text # تخزين الرابط مؤقتاً
     
+    # --- !! تم تغيير الأزرار هنا !! ---
     keyboard = [
-        [
-            InlineKeyboardButton("🎬 فيديو (MP4)", callback_data='video'),
-            InlineKeyboardButton("🎵 صوت (MP3)", callback_data='audio'),
-        ]
+        [InlineKeyboardButton("🎬 1080p (أعلى جودة)", callback_data='v_1080')],
+        [InlineKeyboardButton("🎬 720p (جودة عالية)", callback_data='v_720')],
+        [InlineKeyboardButton("🎵 صوت (MP3)", callback_data='audio_mp3')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text('اختر الصيغة المطلوبة:', reply_markup=reply_markup)
+    await update.message.reply_text('اختر الجودة المطلوبة:', reply_markup=reply_markup)
     return CHOOSE_FORMAT # الانتقال للمرحلة التالية (انتظار الضغط)
 
 # (المرحلة 2: عند الضغط على زر الصيغة)
@@ -91,35 +96,30 @@ async def format_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer() 
     
-    chosen_format = query.data 
+    chosen_format = query.data # ('v_1080', 'v_720', or 'audio_mp3')
     context.user_data['format'] = chosen_format
     
     await query.edit_message_text(text=f"تم اختيار {chosen_format}. ⏳ جاري التحميل...")
     
-    # استدعاء دالة التحميل الرئيسية
     await process_download(update, context)
     return ConversationHandler.END 
 
 # (المرحلة 1: عند إرسال رابط تيك توك أو تويتر)
 async def other_links_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['url'] = update.message.text
-    context.user_data['format'] = 'video'
+    context.user_data['format'] = 'v_best' # (أفضل جودة متاحة لتيك توك/تويتر)
     
     await update.message.reply_text("...⏳ جاري تحميل الفيديو (بأعلى جودة)، يرجى الانتظار...")
     
     await process_download(update, context)
     return ConversationHandler.END 
 
-# -----------------------------------------------------------------
-# ------------------!! دالة التحميل الرئيسية (المُعدلة) !!----------
-# -----------------------------------------------------------------
+# (دالة التحميل الرئيسية الموحدة)
 async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = context.user_data.get('url')
     chosen_format = context.user_data.get('format')
     user = update.effective_user
     
-    # --- !! هذا هو الإصلاح (Goal 1) !! ---
-    # تحديد الهدف للرد (سواء كان رسالة أو زر)
     reply_target = update.message or update.callback_query.message
 
     if not url or not chosen_format:
@@ -144,7 +144,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ydl_opts = {}
     output_path = ""
     try:
-        if chosen_format == 'audio':
+        if chosen_format == 'audio_mp3':
             base_name = "final_audio"
             output_path = f"{base_name}.mp3"
             ydl_opts = {
@@ -155,11 +155,20 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 **cookie_opts
             }
         
-        else: # (chosen_format == 'video')
+        else: # (طلبات الفيديو)
             base_name = "final_video"
             output_path = f"{base_name}.mp4"
+            
+            # --- !! منطق اختيار الجودة !! ---
+            if chosen_format == 'v_1080':
+                format_string = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
+            elif chosen_format == 'v_720':
+                format_string = 'bestvideo[height<=720]+bestaudio/best[height<=720]'
+            else: # (لـ 'v_best' الخاص بتيك توك/تويتر)
+                format_string = 'bestvideo+bestaudio/best'
+
             ydl_opts = {
-                'format': 'bestvideo+bestaudio/best', # (أعلى جودة دمج)
+                'format': format_string,
                 'outtmpl': base_name, 
                 'quiet': False, 
                 'merge_output_format': 'mp4', 
@@ -170,7 +179,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        time.sleep(2) 
+        time.sleep(2) # انتظار لضمان إغلاق الملف
 
         # --- فحص الملف بعد التحميل ---
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
@@ -179,7 +188,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if file_size < MAX_FILE_SIZE:
                 # --- الحل 1: إرسال الملف (أقل من 50 ميجا) ---
                 caption = "تفضل الملف الخاص بك! 🥳"
-                if chosen_format == 'audio':
+                if chosen_format == 'audio_mp3':
                     await reply_target.reply_audio(audio=open(output_path, 'rb'), caption=caption)
                 else:
                     await reply_target.reply_video(video=open(output_path, 'rb'), caption=caption)
@@ -187,26 +196,25 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await send_log(f"✅ **Sent File ({chosen_format})**\nUser: {user.first_name}\nLink: `{url}`", context)
             
             else:
-                # --- !! هذا هو الإصلاح (Goal 2) !! ---
                 # --- الحل 2: إرسال الرابط (أكبر من 50 ميجا) ---
                 file_size_mb = file_size // 1024 // 1024
                 await reply_target.reply_text(
                     f"عذراً، الملف كبير جداً ({file_size_mb} MB). 😅\n"
-                    "جاري جلب رابط تحميل مباشر (لأفضل جودة مدموجة)..."
+                    "جاري جلب رابط تحميل مباشر (بجودة 720p كحد أقصى)..."
                 )
                 
-                # جلب الرابط المباشر (لأفضل ملف مدموج جاهز، غالباً 720p)
+                # جلب الرابط المباشر (بجودة 720p كخيار آمن ومضمون)
                 link_opts = {
-                    'format': 'best[ext=mp4][filesize<4G]/best[filesize<4G]', # <-- !! السطر المُعدل !!
+                    'format': 'best[ext=mp4][height<=720]/best[height<=720]',
                     'quiet': True,
                     **cookie_opts
                 }
                 with yt_dlp.YoutubeDL(link_opts) as ydl_link:
                     info = ydl_link.extract_info(url, download=False)
-                    direct_link = info.get('url') # (استخدم .get لآمان أكثر)
+                    direct_link = info.get('url') 
                     if direct_link:
                         await reply_target.reply_text(f"🔗 تفضل الرابط المباشر (صالح لبضع دقائق فقط):\n\n`{direct_link}`", parse_mode='Markdown')
-                        await send_log(f"✅ **Sent Link ({chosen_format})**\nUser: {user.first_name}\nLink: `{url}`", context)
+                        await send_log(f"✅ **Sent Link (Fallback)**\nUser: {user.first_name}\nLink: `{url}`", context)
                     else:
                         await reply_target.reply_text("عذراً، فشلت في جلب الرابط المباشر. 😕")
 
@@ -216,7 +224,6 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         print(f"حدث خطأ: {e}")
-        # --- !! هذا هو الإصلاح (Goal 1) !! ---
         await reply_target.reply_text(
             "عذراً، حدث خطأ. 🚫\n"
             "تأكد أن الرابط عام وليس خاصاً."
@@ -231,3 +238,49 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # (دالة لإلغاء المحادثة)
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('تم إلغاء الأمر. أرسل رابطاً جديداً.')
+    return ConversationHandler.END
+
+
+def main():
+    """الدالة الرئيسية لتشغيل البوت."""
+    print("🤖 البوت قيد التشغيل (بإصدار v4 - اختيار الجودة)...")
+    
+    application = Application.builder().token(TOKEN).build()
+    
+    application.add_handler(TypeHandler(Update, check_ban_status), group=-1)
+    
+    # --- معالج المحادثة لليوتيوب ---
+    youtube_conv_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(r'(youtube\.com|youtu\.be)'), youtube_handler)],
+        states={
+            CHOOSE_FORMAT: [CallbackQueryHandler(format_choice)]
+        },
+        fallbacks=[CommandHandler("start", start), MessageHandler(filters.TEXT, cancel)]
+    )
+    application.add_handler(youtube_conv_handler)
+    
+    # --- المعالج المنفصل لتيك توك وتويتر ---
+    other_links_filter = filters.Regex(r'(tiktok\.com|twitter\.com|x\.com)')
+    application.add_handler(MessageHandler(other_links_filter, other_links_handler))
+    
+    # الأوامر العادية
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+
+    # (هذا المعالج للرد على أي رسالة ليست رابطاً صالحاً)
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & ~other_links_filter & ~filters.Regex(r'(youtube\.com|youtu\.be)'),
+        help_command 
+    ))
+
+    # --- تشغيل Webhook ---
+    PORT = int(os.environ.get("PORT", 8443))
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=f"{APP_URL}/{TOKEN}"
+    )
+
+if __name__ == "__main__":
+    main()
