@@ -1,5 +1,6 @@
 import os
 import yt_dlp
+import time # <-- !! إضافة جديدة لحل مشكلة السباق !!
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -39,7 +40,7 @@ async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Error sending log to channel: {e}")
 
-# (دالة /start)
+# (دوال /start و /help - كما هي)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_html(
@@ -52,7 +53,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_info = f"User: {user.first_name} (@{user.username}, ID: {user.id})"
     await send_log(f"🚀 **Bot Started**\n{user_info}", context)
 
-# (دالة /help)
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "فقط أرسل رابط فيديو تيك توك أو يوتيوب 🔗"
@@ -71,7 +71,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "tiktok.com" in message_text or "youtube.com" in message_text or "youtu.be" in message_text:
         
         await update.message.reply_text("...⏳ جاري تحميل الفيديو (بأعلى جودة)، يرجى الانتظار...")
-        video_path = "final_video.mp4"
+        
+        # --- !! تعديل طريقة تعريف المسار !! ---
+        video_base_name = "final_video" # الاسم بدون امتداد
+        video_path = f"{video_base_name}.mp4" # المسار الذي سنتحقق منه
+        
         cleanup_file(video_path)
         
         cookie_file_path = 'cookies.txt'
@@ -88,14 +92,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # --- المحاولة الأولى: تحميل أعلى جودة ---
             ydl_opts_best = {
                 'format': 'bestvideo+bestaudio/best',
-                'outtmpl': video_path,
-                'quiet': False, # (أبقيناها False للتشخيص كما طلبت سابقاً)
-                'merge_output_format': 'mp4', # <-- !! هذا هو السطر الجديد !!
+                'outtmpl': video_base_name, # <-- نستخدم الاسم الأساسي فقط
+                'quiet': False, 
+                'merge_output_format': 'mp4', # <-- هذا سيجبر الامتداد أن يكون mp4
                 **cookie_opts 
             }
 
             with yt_dlp.YoutubeDL(ydl_opts_best) as ydl:
                 ydl.download([message_text])
+
+            # --- !! إضافة تأخير (Delay) لحل مشكلة السباق !! ---
+            time.sleep(2) # انتظر ثانيتين لضمان إغلاق الملف
 
             # --- التحقق من الحجم ---
             if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
@@ -121,15 +128,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # --- المحاولة الثانية: تحميل نسخة أصغر ---
                     ydl_opts_small = {
                         'format': 'best[filesize<48M]/bestvideo[filesize<48M]+bestaudio[filesize<48M]',
-                        'outtmpl': video_path,
-                        'quiet': False, # (أبقيناها False للتشخيص)
-                        'merge_output_format': 'mp4', # <-- !! هذا هو السطر الجديد !!
+                        'outtmpl': video_base_name, # <-- نستخدم الاسم الأساسي
+                        'quiet': False, 
+                        'merge_output_format': 'mp4', # <-- نجبر الامتداد
                         **cookie_opts
                     }
                     
                     with yt_dlp.YoutubeDL(ydl_opts_small) as ydl_small:
                         ydl_small.download([message_text])
-                        
+                    
+                    time.sleep(2) # <-- نضيف التأخير هنا أيضاً
+
                     if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                         with open(video_path, 'rb') as video_file_small:
                             await update.message.reply_video(
@@ -142,7 +151,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await send_log(f"❌ **Failed (Too Large)**\nUser: {user.first_name}\nLink: `{message_text}`", context)
 
             else:
-                await update.message.reply_text("عذراً، لم أستطع تحميل الفيديو (الملف فارغ). 😕")
+                # إذا وصلنا هنا، فالمشكلة ليست من السباق، بل التحميل فشل فعلاً
+                await update.message.reply_text("عذراً، لم أستطع تحميل الفيديو (الملف فارغ بعد الانتظار). 😕")
                 await send_log(f"❌ **Failed (Empty File)**\nLink: {message_text}", context)
 
         except Exception as e:
