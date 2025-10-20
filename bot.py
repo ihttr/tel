@@ -17,21 +17,17 @@ APP_URL = os.environ.get("RENDER_EXTERNAL_URL")
 LOG_CHANNEL_ID = os.environ.get("LOG_CHANNEL_ID")
 BANNED_IDS_STR = os.environ.get("BANNED_IDS", "")
 BANNED_LIST = BANNED_IDS_STR.split(',')
-
-# --- !! المتغير الجديد الخاص بالكوكيز !! ---
 YOUTUBE_COOKIES_TEXT = os.environ.get("YOUTUBE_COOKIES")
-
-# --- تحديد حجم الإرسال الأقصى (بالبايت) ---
 MAX_FILE_SIZE = 48 * 1024 * 1024 
 
-# (جدار الحماية الخاص بالحظر - كما هو)
+# (جدار الحماية الخاص بالحظر)
 async def check_ban_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user:
         user_id = str(update.effective_user.id)
         if user_id in BANNED_LIST:
             raise ApplicationHandlerStop
 
-# (دالة إرسال السجلات - كما هي)
+# (دالة إرسال السجلات)
 async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
     if LOG_CHANNEL_ID:
         try:
@@ -43,7 +39,7 @@ async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Error sending log to channel: {e}")
 
-# (دالة /start - كما هي مع تعديل النص)
+# (دالة /start)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_html(
@@ -56,7 +52,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_info = f"User: {user.first_name} (@{user.username}, ID: {user.id})"
     await send_log(f"🚀 **Bot Started**\n{user_info}", context)
 
-# (دالة /help - كما هي)
+# (دالة /help)
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "فقط أرسل رابط فيديو تيك توك أو يوتيوب 🔗"
@@ -78,15 +74,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video_path = "final_video.mp4"
         cleanup_file(video_path)
         
-        # --- !! الإضافة الجديدة: إنشاء ملف الكوكيز المؤقت !! ---
         cookie_file_path = 'cookies.txt'
         cookie_opts = {}
         if YOUTUBE_COOKIES_TEXT:
             try:
-                # كتابة الكوكيز إلى ملف مؤقت
                 with open(cookie_file_path, 'w') as f:
                     f.write(YOUTUBE_COOKIES_TEXT)
-                # تجهيز الإعداد لإرساله إلى yt-dlp
                 cookie_opts = {'cookiefile': cookie_file_path}
             except Exception as e:
                 print(f"Error writing cookie file: {e}")
@@ -96,8 +89,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ydl_opts_best = {
                 'format': 'bestvideo+bestaudio/best',
                 'outtmpl': video_path,
-                'quiet': False,
-                **cookie_opts # <-- إضافة الكوكيز هنا
+                'quiet': False, # (أبقيناها False للتشخيص كما طلبت سابقاً)
+                'merge_output_format': 'mp4', # <-- !! هذا هو السطر الجديد !!
+                **cookie_opts 
             }
 
             with yt_dlp.YoutubeDL(ydl_opts_best) as ydl:
@@ -122,14 +116,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"عذراً، الفيديو كبير جداً ({file_size // 1024 // 1024} MB). 😅\n"
                         "جاري محاولة تحميل نسخة أصغر حجماً (< 50MB)..."
                     )
-                    cleanup_file(video_path) # حذف الملف الكبير
+                    cleanup_file(video_path)
                     
                     # --- المحاولة الثانية: تحميل نسخة أصغر ---
                     ydl_opts_small = {
                         'format': 'best[filesize<48M]/bestvideo[filesize<48M]+bestaudio[filesize<48M]',
                         'outtmpl': video_path,
-                        'quiet': False,
-                        **cookie_opts # <-- إضافة الكوكيز هنا أيضاً
+                        'quiet': False, # (أبقيناها False للتشخيص)
+                        'merge_output_format': 'mp4', # <-- !! هذا هو السطر الجديد !!
+                        **cookie_opts
                     }
                     
                     with yt_dlp.YoutubeDL(ydl_opts_small) as ydl_small:
@@ -156,8 +151,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_log(f"🚫 **Error**\nLink: `{message_text}`\nError: `{e}`", context)
             
         finally:
-            cleanup_file(video_path) # حذف ملف الفيديو
-            cleanup_file(cookie_file_path) # <-- !! حذف ملف الكوكيز المؤقت !!
+            cleanup_file(video_path) 
+            cleanup_file(cookie_file_path)
             
     else:
         await update.message.reply_text(
@@ -187,4 +182,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
