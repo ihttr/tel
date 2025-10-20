@@ -1,5 +1,6 @@
 import os
 import yt_dlp
+import time # <-- !! إضافة جديدة لحل مشكلة السباق !!
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -17,14 +18,9 @@ APP_URL = os.environ.get("RENDER_EXTERNAL_URL")
 LOG_CHANNEL_ID = os.environ.get("LOG_CHANNEL_ID")
 BANNED_IDS_STR = os.environ.get("BANNED_IDS", "")
 BANNED_LIST = BANNED_IDS_STR.split(',')
-
-# --- !! المتغير الجديد الخاص بالكوكيز !! ---
 YOUTUBE_COOKIES_TEXT = os.environ.get("YOUTUBE_COOKIES")
-
-# --- تحديد حجم الإرسال الأقصى (بالبايت) ---
 MAX_FILE_SIZE = 48 * 1024 * 1024 
 
-# (جدار الحماية الخاص بالحظر - كما هو)
 # (جدار الحماية الخاص بالحظر)
 async def check_ban_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user:
@@ -32,7 +28,6 @@ async def check_ban_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id in BANNED_LIST:
             raise ApplicationHandlerStop
 
-# (دالة إرسال السجلات - كما هي)
 # (دالة إرسال السجلات)
 async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
     if LOG_CHANNEL_ID:
@@ -45,8 +40,7 @@ async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Error sending log to channel: {e}")
 
-# (دالة /start - كما هي مع تعديل النص)
-# (دالة /start)
+# (دوال /start و /help - كما هي)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_html(
@@ -59,8 +53,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_info = f"User: {user.first_name} (@{user.username}, ID: {user.id})"
     await send_log(f"🚀 **Bot Started**\n{user_info}", context)
 
-# (دالة /help - كما هي)
-# (دالة /help)
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "فقط أرسل رابط فيديو تيك توك أو يوتيوب 🔗"
@@ -75,45 +67,47 @@ def cleanup_file(path):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text
     user = update.effective_user
-
+    
     if "tiktok.com" in message_text or "youtube.com" in message_text or "youtu.be" in message_text:
-
+        
         await update.message.reply_text("...⏳ جاري تحميل الفيديو (بأعلى جودة)، يرجى الانتظار...")
-        video_path = "final_video.mp4"
+        
+        # --- !! تعديل طريقة تعريف المسار !! ---
+        video_base_name = "final_video" # الاسم بدون امتداد
+        video_path = f"{video_base_name}.mp4" # المسار الذي سنتحقق منه
+        
         cleanup_file(video_path)
-
-        # --- !! الإضافة الجديدة: إنشاء ملف الكوكيز المؤقت !! ---
+        
         cookie_file_path = 'cookies.txt'
         cookie_opts = {}
         if YOUTUBE_COOKIES_TEXT:
             try:
-                # كتابة الكوكيز إلى ملف مؤقت
                 with open(cookie_file_path, 'w') as f:
                     f.write(YOUTUBE_COOKIES_TEXT)
-                # تجهيز الإعداد لإرساله إلى yt-dlp
                 cookie_opts = {'cookiefile': cookie_file_path}
             except Exception as e:
                 print(f"Error writing cookie file: {e}")
-
+                
         try:
             # --- المحاولة الأولى: تحميل أعلى جودة ---
             ydl_opts_best = {
                 'format': 'bestvideo+bestaudio/best',
-                'outtmpl': video_path,
-                'quiet': False,
-                **cookie_opts # <-- إضافة الكوكيز هنا
-                'quiet': False, # (أبقيناها False للتشخيص كما طلبت سابقاً)
-                'merge_output_format': 'mp4', # <-- !! هذا هو السطر الجديد !!
+                'outtmpl': video_base_name, # <-- نستخدم الاسم الأساسي فقط
+                'quiet': False, 
+                'merge_output_format': 'mp4', # <-- هذا سيجبر الامتداد أن يكون mp4
                 **cookie_opts 
             }
 
             with yt_dlp.YoutubeDL(ydl_opts_best) as ydl:
                 ydl.download([message_text])
 
+            # --- !! إضافة تأخير (Delay) لحل مشكلة السباق !! ---
+            time.sleep(2) # انتظر ثانيتين لضمان إغلاق الملف
+
             # --- التحقق من الحجم ---
             if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                 file_size = os.path.getsize(video_path)
-
+                
                 if file_size < MAX_FILE_SIZE:
                     # (ناجح والحجم مناسب)
                     with open(video_path, 'rb') as video_file:
@@ -122,29 +116,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             caption="تفضل الفيديو الخاص بك (بأعلى جودة)! 🥳"
                         )
                     await send_log(f"✅ **New Download (HQ)**\nUser: {user.first_name} (@{user.username})\nLink: `{message_text}`", context)
-
+                
                 else:
                     # (ناجح لكن الحجم كبير)
                     await update.message.reply_text(
                         f"عذراً، الفيديو كبير جداً ({file_size // 1024 // 1024} MB). 😅\n"
                         "جاري محاولة تحميل نسخة أصغر حجماً (< 50MB)..."
                     )
-                    cleanup_file(video_path) # حذف الملف الكبير
                     cleanup_file(video_path)
-
+                    
                     # --- المحاولة الثانية: تحميل نسخة أصغر ---
                     ydl_opts_small = {
                         'format': 'best[filesize<48M]/bestvideo[filesize<48M]+bestaudio[filesize<48M]',
-                        'outtmpl': video_path,
-                        'quiet': False,
-                        **cookie_opts # <-- إضافة الكوكيز هنا أيضاً
-                        'quiet': False, # (أبقيناها False للتشخيص)
-                        'merge_output_format': 'mp4', # <-- !! هذا هو السطر الجديد !!
+                        'outtmpl': video_base_name, # <-- نستخدم الاسم الأساسي
+                        'quiet': False, 
+                        'merge_output_format': 'mp4', # <-- نجبر الامتداد
                         **cookie_opts
                     }
-
+                    
                     with yt_dlp.YoutubeDL(ydl_opts_small) as ydl_small:
                         ydl_small.download([message_text])
+                    
+                    time.sleep(2) # <-- نضيف التأخير هنا أيضاً
 
                     if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                         with open(video_path, 'rb') as video_file_small:
@@ -158,20 +151,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await send_log(f"❌ **Failed (Too Large)**\nUser: {user.first_name}\nLink: `{message_text}`", context)
 
             else:
-                await update.message.reply_text("عذراً، لم أستطع تحميل الفيديو (الملف فارغ). 😕")
+                # إذا وصلنا هنا، فالمشكلة ليست من السباق، بل التحميل فشل فعلاً
+                await update.message.reply_text("عذراً، لم أستطع تحميل الفيديو (الملف فارغ بعد الانتظار). 😕")
                 await send_log(f"❌ **Failed (Empty File)**\nLink: {message_text}", context)
 
         except Exception as e:
             print(f"حدث خطأ: {e}")
             await update.message.reply_text("عذراً، حدث خطأ. 🚫\nتأكد أن الرابط عام وليس خاصاً.")
             await send_log(f"🚫 **Error**\nLink: `{message_text}`\nError: `{e}`", context)
-
+            
         finally:
-            cleanup_file(video_path) # حذف ملف الفيديو
-            cleanup_file(cookie_file_path) # <-- !! حذف ملف الكوكيز المؤقت !!
             cleanup_file(video_path) 
             cleanup_file(cookie_file_path)
-
+            
     else:
         await update.message.reply_text(
             "الرجاء إرسال رابط تيك توك أو يوتيوب صحيح. 🔗"
@@ -181,16 +173,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """الدالة الرئيسية لتشغيل البوت."""
     print("🤖 البوت قيد التشغيل (TikTok + YouTube + Cookies)...")
-
+    
     application = Application.builder().token(TOKEN).build()
-
+    
     application.add_handler(TypeHandler(Update, check_ban_status), group=-1)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     PORT = int(os.environ.get("PORT", 8443))
-
+    
     application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
