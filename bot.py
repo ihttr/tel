@@ -1,13 +1,48 @@
 import os
 import yt_dlp
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+    TypeHandler,  # <-- لاستخدامه في جدار الحماية
+    ApplicationHandlerStop, # <-- لإيقاف المعالجة إذا كان محظوراً
+)
 
 # --- قراءة المتغيرات من الخادم ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 APP_URL = os.environ.get("RENDER_EXTERNAL_URL")
-# --- المتغير الجديد الخاص بقناة السجلات ---
-LOG_CHANNEL_ID = os.environ.get("LOG_CHANNEL_ID") 
+LOG_CHANNEL_ID = os.environ.get("LOG_CHANNEL_ID")
+# --- جلب قائمة المحظورين ---
+BANNED_IDS_STR = os.environ.get("BANNED_IDS", "")
+# تحويل القائمة من نص إلى قائمة حقيقية
+BANNED_LIST = BANNED_IDS_STR.split(',')
+
+# -----------------------------------------------------------------
+# ------------------!! جدار الحماية (Ban Check) !!------------------
+# -----------------------------------------------------------------
+async def check_ban_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    هذه الدالة تعمل قبل أي دالة أخرى.
+    تتحقق إذا كان المستخدم في قائمة الحظر.
+    """
+    if update.effective_user:
+        user_id = str(update.effective_user.id)
+        
+        if user_id in BANNED_LIST:
+            print(f"Banned user {user_id} tried to access.") # طباعة في سجلات Render
+            
+            # (اختياري) إرسال رسالة للمستخدم المحظور
+            # await update.message.reply_text("عذراً، أنت محظور من استخدام هذا البوت.")
+            
+            # إيقاف أي معالجة أخرى. البوت سيتجاهله تماماً
+            raise ApplicationHandlerStop
+
+# -----------------------------------------------------------------
+# -----------------------------------------------------------------
+
 
 # دالة مساعدة لإرسال السجلات
 async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
@@ -17,7 +52,7 @@ async def send_log(message, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=LOG_CHANNEL_ID,
                 text=message,
-                parse_mode='Markdown' # لجعل النص منسقاً
+                parse_mode='Markdown'
             )
         except Exception as e:
             print(f"Error sending log to channel: {e}")
@@ -32,8 +67,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "أرسل لي أي رابط فيديو من تيك توك وسأقوم بإرساله لك بأعلى جودة. 🎬"
     )
-    
-    # --- إرسال سجل عند ضغط /start ---
     user_info = f"User: {user.first_name} (@{user.username}, ID: {user.id})"
     await send_log(f"🚀 **Bot Started**\n{user_info}", context)
 
@@ -46,7 +79,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # (handler) دالة لمعالجة الروابط
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text
-    user = update.effective_user # <-- جلب معلومات المستخدم
+    user = update.effective_user
     
     if "tiktok.com" in message_text:
         await update.message.reply_text("...⏳ جاري تحميل الفيديو (بأعلى جودة)، قد يستغرق هذا وقتاً أطول قليلاً...")
@@ -74,18 +107,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     caption="تفضل الفيديو الخاص بك (بأعلى جودة)! 🥳"
                 )
                 
-                # --- إرسال سجل عند نجاح التحميل ---
                 user_info = f"User: {user.first_name} (@{user.username}, ID: {user.id})"
                 log_message = (
                     f"✅ **New Download**\n\n"
                     f"{user_info}\n\n"
-                    f"Link: `{message_text}`" # نضع الرابط بين علامتي ` لنسخه بسهولة
+                    f"Link: `{message_text}`"
                 )
                 await send_log(log_message, context)
                 
             else:
                 await update.message.reply_text("عذراً، لم أستطع تحميل الفيديو (الملف فارغ). 😕")
-                # --- إرسال سجل عند فشل التحميل ---
                 await send_log(f"❌ **Download Failed (Empty File)**\nLink: {message_text}", context)
 
         except Exception as e:
@@ -94,7 +125,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "عذراً، حدث خطأ. 🚫\n"
                 "تأكد أن الرابط عام وليس خاصاً، أو أن الفيديو لم يُحذف."
             )
-            # --- إرسال سجل عند حدوث خطأ ---
             await send_log(f"🚫 **Error**\nLink: `{message_text}`\nError: `{e}`", context)
             
         finally:
@@ -107,11 +137,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    """الدالة الرئيسية لتشغيل البوت (بنظام Webhook)."""
-    print("🤖 البوت قيد التشغيل (بنظام Webhook + Logging)...")
+    """الدالة الرئيسية لتشغيل البوت."""
+    print("🤖 البوت قيد التشغيل (بنظام Webhook + Logging + Ban System)...")
     
     application = Application.builder().token(TOKEN).build()
+    
+    # --- إضافة جدار الحماية (Ban Check) ---
+    # group=-1 يعني أنه سيعمل قبل كل شيء
+    application.add_handler(TypeHandler(Update, check_ban_status), group=-1)
 
+    # إضافة الأوامر العادية
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
