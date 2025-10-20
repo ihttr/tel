@@ -133,13 +133,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                 file_size = os.path.getsize(video_path)
                 
-                if file_size < MAX_FILE_SIZE:
+                if file_size >= MAX_FILE_SIZE:
                     with open(video_path, 'rb') as video_file:
                         await update.message.reply_video(
                             video=video_file.read(),
                             caption="تفضل الفيديو الخاص بك (بأعلى جودة)! 🥳"
                         )
-                    await send_log(f"✅ **New Download (HQ)**\nUser: {user.first_name} (@{user.username})\nLink: `{message_text}`", context)
+                    await send_log(f"✅ **New Download (HQ)**\nUser: {user.first_name} (@{user.username,ID: {user.id}})\nLink: `{message_text}`", context)
                 
                 else:
                     await update.message.reply_text(
@@ -223,3 +223,4 @@ def main():
 if __name__ == "__main__":
     main()
     
+
