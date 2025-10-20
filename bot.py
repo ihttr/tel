@@ -96,7 +96,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ydl_opts_best = {
                 'format': 'bestvideo+bestaudio/best',
                 'outtmpl': video_path,
-                'quiet': True,
+                'quiet': False,
                 **cookie_opts # <-- إضافة الكوكيز هنا
             }
 
@@ -128,7 +128,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ydl_opts_small = {
                         'format': 'best[filesize<48M]/bestvideo[filesize<48M]+bestaudio[filesize<48M]',
                         'outtmpl': video_path,
-                        'quiet': True,
+                        'quiet': False,
                         **cookie_opts # <-- إضافة الكوكيز هنا أيضاً
                     }
                     
@@ -187,3 +187,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
