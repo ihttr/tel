@@ -20,7 +20,7 @@ BANNED_IDS_STR = os.environ.get("BANNED_IDS", "")
 BANNED_LIST = BANNED_IDS_STR.split(',')
 YOUTUBE_COOKIES_TEXT = os.environ.get("YOUTUBE_COOKIES")
 TWITTER_COOKIES_TEXT = os.environ.get("TWITTER_COOKIES") 
-MAX_FILE_SIZE = 1000 * 1024 * 1024
+MAX_FILE_SIZE = 0
 
 # (جدار الحماية الخاص بالحظر)
 async def check_ban_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,7 +133,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                 file_size = os.path.getsize(video_path)
                 
-                if file_size < MAX_FILE_SIZE:
+                if file_size > MAX_FILE_SIZE:
                     with open(video_path, 'rb') as video_file:
                         await update.message.reply_video(
                             video=video_file.read(),
@@ -223,6 +223,7 @@ def main():
 if __name__ == "__main__":
     main()
     
+
 
 
 
