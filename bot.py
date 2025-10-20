@@ -143,100 +143,81 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Error writing cookie file: {e}")
 
-    # تحديد إعدادات yt-dlp بناءً على الاختيار
-    ydl_opts = {}
-    output_path = ""
-    try:
-        if chosen_format == 'audio_mp3':
-            output_path = "final_audio.mp3"
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': output_path,
-                'postprocessors': [{ 'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192', }],
-                'quiet': False,
-                **cookie_opts
-            }
-        
-        else: # (طلبات الفيديو)
-            output_path = "final_video.mp4"
-            
-            if chosen_format == 'v_1080':
-                format_string = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
-            elif chosen_format == 'v_720':
-                format_string = 'bestvideo[height<=720]+bestaudio/best[height<=720]'
-            else: # (لـ 'v_best' الخاص بتيك توك/تويتر)
-                format_string = 'bestvideo+bestaudio/best'
-
-            ydl_opts = {
-                'format': format_string,
-                'outtmpl': output_path, 
+try:
+            ydl_opts_best = {
+                'format': 'bestvideo+bestaudio/best',
+                'outtmpl': video_base_name, 
                 'quiet': False, 
                 'merge_output_format': 'mp4', 
                 **cookie_opts
             }
 
-        # --- بدء التحميل ---
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            with yt_dlp.YoutubeDL(ydl_opts_best) as ydl:
+                ydl.download([message_text])
 
-        time.sleep(2) 
+            time.sleep(2) 
 
-        # --- فحص الملف بعد التحميل ---
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            file_size = os.path.getsize(output_path)
-            
-            if file_size < MAX_FILE_SIZE:
-                # --- الحل 1: إرسال الملف (أقل من 50 ميجا) ---
-                caption = "تفضل الملف الخاص بك! 🥳"
-                if chosen_format == 'audio_mp3':
-                    await reply_target.reply_audio(audio=open(output_path, 'rb'), caption=caption)
+            if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+                file_size = os.path.getsize(video_path)
+                
+                if file_size < MAX_FILE_SIZE:
+                    with open(video_path, 'rb') as video_file:
+                        await update.message.reply_video(
+                            video=video_file.read(),
+                            caption="تفضل الفيديو الخاص بك (بأعلى جودة)! 🥳"
+                        )
+                    await send_log(f"✅ **New Download (HQ)**\nUser: {user.first_name} (@{user.username}, ID: {user.id})\nLink: `{message_text}`", context)
+                
                 else:
-                    await reply_target.reply_video(video=open(output_path, 'rb'), caption=caption)
-                
-                # --- !! هذا هو الإصلاح (Goal 2) !! ---
-                await send_log(f"✅ **Sent File ({chosen_format})**\n{user_info}\nLink: `{url}`", context)
-            
-            else:
-                # --- الحل 2: إرسال الرابط (أكبر من 50 ميجا) ---
-                file_size_mb = file_size // 1024 // 1024
-                await reply_target.reply_text(
-                    f"عذراً، الملف كبير جداً ({file_size_mb} MB). 😅\n"
-                    "جاري جلب رابط تحميل مباشر (بجودة 720p كحد أقصى)..."
-                )
-                
-                link_opts = {
-                    'format': 'best[ext=mp4][height<=720]/best[height<=720]',
-                    'quiet': True,
-                    **cookie_opts
-                }
-                with yt_dlp.YoutubeDL(link_opts) as ydl_link:
-                    info = ydl_link.extract_info(url, download=False)
-                    direct_link = info.get('url') 
-                    if direct_link:
-                        await reply_target.reply_text(f"🔗 تفضل الرابط المباشر (صالح لبضع دقائق فقط):\n\n`{direct_link}`", parse_mode='Markdown')
-                        # --- !! هذا هو الإصلاح (Goal 3) !! ---
-                        await send_log(f"✅ **Sent Link (Fallback)**\n{user_info}\nLink: `{url}`", context)
+                    await update.message.reply_text(
+                        f"عذراً، الفيديو كبير جداً ({file_size // 1024 // 1024} MB). 😅\n"
+                        "جاري محاولة تحميل نسخة أصغر حجماً (< 50MB)..."
+                    )
+                    cleanup_file(video_path)
+                    
+                    ydl_opts_small = {
+                        'format': 'best[filesize<48M]/bestvideo[filesize<48M]+bestaudio[filesize<48M]',
+                        'outtmpl': video_base_name, 
+                        'quiet': False, 
+                        'merge_output_format': 'mp4', 
+                        **cookie_opts
+                    }
+                    
+                    with yt_dlp.YoutubeDL(ydl_opts_small) as ydl_small:
+                        ydl_small.download([message_text])
+                    
+                    time.sleep(2) 
+
+                    if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+                        with open(video_path, 'rb') as video_file_small:
+                            await update.message.reply_video(
+                                video=video_file_small.read(),
+                                caption="تفضل الفيديو (نسخة مضغوطة)! 📦"
+                            )
+                        await send_log(f"✅ **New Download (LQ)**\nUser: {user.first_name} (@{user.username}, ID: {user.id})\nLink: `{message_text}`", context)
                     else:
-                        await reply_target.reply_text("عذراً، فشلت في جلب الرابط المباشر. 😕")
+                        await update.message.reply_text("عذراً، لم أتمكن من العثور على نسخة بحجم مناسب. 😕")
+                        await send_log(f"❌ **Failed (Too Large)**\nUser: {user.first_name}, ID: {user.id}\nLink: `{message_text}`", context)
 
-        else:
-            await reply_target.reply_text("عذراً، لم أستطع تحميل الملف (الملف فارغ بعد الانتظار). 😕")
-            # --- !! هذا هو الإصلاح (Goal 4) !! ---
-            await send_log(f"❌ **Failed (Empty File)**\n{user_info}\nLink: `{url}`", context)
+            else:
+                await update.message.reply_text("عذراً، لم أستطع تحميل الفيديو (الملف فارغ بعد الانتظار). 😕")
+                await send_log(f"❌ **Failed (Empty File)**, ID: {user.id}\nLink: {message_text}", context)
 
-    except Exception as e:
-        print(f"حدث خطأ: {e}")
-        await reply_target.reply_text(
-            "عذراً، حدث خطأ. 🚫\n"
-            "تأكد أن الرابط عام وليس خاصاً."
+        except Exception as e:
+            print(f"حدث خطأ: {e}")
+            await update.message.reply_text("عذراً، حدث خطأ. 🚫\nتأكد أن الرابط عام وليس خاصاً.")
+            await send_log(f"🚫 **Error**, ID: {user.id}\nLink: `{message_text}`\nError: `{e}`", context)
+            
+        finally:
+            cleanup_file(video_path) 
+            cleanup_file(cookie_file_path)
+            
+    else:
+        # (إذا لم تكن رسالة صالحة أو زر)
+        await update.message.reply_text(
+            "لم أفهم الطلب. 😕\n"
+            "الرجاء إرسال رابط (تيك توك)، (يوتيوب) أو (تويتر/X) صحيح. 🔗"
         )
-        # --- !! هذا هو الإصلاح (Goal 5) !! ---
-        await send_log(f"🚫 **Error**\n{user_info}\nLink: `{url}`\nError: `{e}`", context)
-        
-    finally:
-        cleanup_file(output_path) 
-        cleanup_file(cookie_file_path)
-        context.user_data.clear() 
 
 # (دالة لإلغاء المحادثة)
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -287,3 +268,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
