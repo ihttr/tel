@@ -189,7 +189,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await reply_target.reply_video(video=open(output_path, 'rb'), caption=caption)
                 
-                await send_log(f"✅ **Sent File ({chosen_format})**\nUser: {user.first_name}\nLink: `{url}`", context)
+                await send_log(f"✅ **Sent File ({chosen_format})**\nUser: {user.first_name}, ID: {user.id} \nLink: `{url}`", context)
             
             else:
                 # --- الحل 2: إرسال الرابط (أكبر من 50 ميجا) ---
@@ -209,7 +209,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     direct_link = info.get('url') 
                     if direct_link:
                         await reply_target.reply_text(f"🔗 تفضل الرابط المباشر (صالح لبضع دقائق فقط):\n\n`{direct_link}`", parse_mode='Markdown')
-                        await send_log(f"✅ **Sent Link (Fallback)**\nUser: {user.first_name}\nLink: `{url}`", context)
+                        await send_log(f"✅ **Sent Link (Fallback)**\nUser: {user.first_name}, ID: {user.id}\nLink: `{url}`", context)
                     else:
                         await reply_target.reply_text("عذراً، فشلت في جلب الرابط المباشر. 😕")
 
@@ -223,7 +223,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "عذراً، حدث خطأ. 🚫\n"
             "تأكد أن الرابط عام وليس خاصاً."
         )
-        await send_log(f"🚫 **Error**\nLink: `{url}`\nError: `{e}`", context)
+        await send_log(f"🚫 **Error**, ID: {user.id}\nLink: `{url}`\nError: `{e}`", context)
         
     finally:
         cleanup_file(output_path) 
@@ -279,3 +279,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
