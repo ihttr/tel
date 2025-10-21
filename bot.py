@@ -127,9 +127,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     with open(video_path, 'rb') as video_file:
                         await update.message.reply_video(
                             video=video_file, # <-- !! تم التحسين هنا !!
-                            caption="تفضل الفيديو الخاص بك (بأعلى جودة)! 🥳"
+                            caption="fتفضل الفيديو الخاص بك (بأعلى جودة)! 🥳\n ({file_size // 1024 // 1024} MB)"
                         )
-                    await send_log(f"✅ **New Download (HQ)**\nUser: {user.first_name} (@{user.username})\nLink: `{message_text}`", context)
+                    await send_log(f"✅ **New Download (HQ)**\nUser: {user.first_name} (@{user.username}, ID: {user.id} )\nLink: `{message_text}`", context)
                 
                 else:
                     # (ناجح لكن الحجم كبير)
@@ -164,7 +164,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await send_log(f"✅ **New Download (LQ)**\nUser: {user.first_name} (@{user.username})\nLink: `{message_text}`", context)
                     else:
                         await update.message.reply_text("عذراً، لم أتمكن من العثور على نسخة بحجم مناسب. 😕")
-                        await send_log(f"❌ **Failed (Too Large)**\nUser: {user.first_name}\nLink: `{message_text}`", context)
+                        await send_log(f"❌ **Failed (Too Large)**\nUser: {user.first_name}, ID: {user.id} \nLink: `{message_text}`", context)
 
             else:
                 await update.message.reply_text("عذراً، لم أستطع تحميل الفيديو (الملف فارغ بعد الانتظار). 😕")
