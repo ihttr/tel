@@ -1,6 +1,8 @@
 import os
 import yt_dlp
 import time
+import asyncio  # <-- إضافة جديدة
+import functools # <-- إضافة جديدة
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -47,7 +49,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rf"أهلاً {user.mention_html()}! 👋",
         reply_markup=None
     )
-    # --- !! تم تعديل النص هنا !! ---
     await update.message.reply_text(
         "أرسل لي أي رابط فيديو من (تيك توك)، (يوتيوب) أو (تويتر/X) وسأقوم بإرساله لك. 🎬"
     )
@@ -56,7 +57,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # (دالة /help)
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # --- !! تم تعديل النص هنا !! ---
     await update.message.reply_text(
         "فقط أرسل رابط فيديو (تيك توك)، (يوتيوب) أو (تويتر/X) 🔗"
     )
@@ -71,7 +71,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text
     user = update.effective_user
     
-    # --- !! تم تعديل الشرط هنا ليشمل تويتر/X !! ---
     is_valid_link = (
         "tiktok.com" in message_text or
         "youtube.com" in message_text or
@@ -91,7 +90,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         cookie_file_path = 'cookies.txt'
         cookie_opts = {}
-        if YOUTUBE_COOKIES_TEXT: # (ملاحظة: هذه الكوكيز لليوتيوب فقط، تويتر سيعمل بدونها للمقاطع العامة)
+        if YOUTUBE_COOKIES_TEXT: 
             try:
                 with open(cookie_file_path, 'w') as f:
                     f.write(YOUTUBE_COOKIES_TEXT)
@@ -103,16 +102,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # --- المحاولة الأولى: تحميل أعلى جودة ---
             ydl_opts_best = {
                 'format': 'bestvideo+bestaudio/best',
-                'outtmpl': video_base_name, 
+                'outtmpl': video_path,  # <-- !! تم التصحيح هنا !!
                 'quiet': False, 
                 'merge_output_format': 'mp4', 
                 **cookie_opts 
             }
 
+            # --- !! تم التعديل: تشغيل العملية في ثريد منفصل !! ---
+            loop = asyncio.get_event_loop()
             with yt_dlp.YoutubeDL(ydl_opts_best) as ydl:
-                ydl.download([message_text])
+                # إنشاء دالة جزئية لتمريرها إلى المنفذ
+                download_func = functools.partial(ydl.download, [message_text])
+                await loop.run_in_executor(None, download_func) # (None) يستخدم الثريد الافتراضي
 
-            time.sleep(2) 
+            # --- !! تم التعديل: استخدام asyncio.sleep !! ---
+            # (ملاحظة: هذا السطر قد لا يكون ضرورياً، جرب حذفه لاحقاً)
+            await asyncio.sleep(2) 
 
             if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                 file_size = os.path.getsize(video_path)
@@ -121,7 +126,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # (ناجح والحجم مناسب)
                     with open(video_path, 'rb') as video_file:
                         await update.message.reply_video(
-                            video=video_file.read(),
+                            video=video_file, # <-- !! تم التحسين هنا !!
                             caption="تفضل الفيديو الخاص بك (بأعلى جودة)! 🥳"
                         )
                     await send_log(f"✅ **New Download (HQ)**\nUser: {user.first_name} (@{user.username})\nLink: `{message_text}`", context)
@@ -137,21 +142,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # --- المحاولة الثانية: تحميل نسخة أصغر ---
                     ydl_opts_small = {
                         'format': 'best[filesize<48M]/bestvideo[filesize<48M]+bestaudio[filesize<48M]',
-                        'outtmpl': video_base_name, 
+                        'outtmpl': video_path, # <-- !! تم التصحيح هنا !!
                         'quiet': False, 
                         'merge_output_format': 'mp4', 
                         **cookie_opts
                     }
                     
+                    # --- !! تم التعديل: تشغيل العملية في ثريد منفصل !! ---
                     with yt_dlp.YoutubeDL(ydl_opts_small) as ydl_small:
-                        ydl_small.download([message_text])
+                        download_func_small = functools.partial(ydl_small.download, [message_text])
+                        await loop.run_in_executor(None, download_func_small)
                     
-                    time.sleep(2) 
+                    await asyncio.sleep(2) 
 
                     if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
                         with open(video_path, 'rb') as video_file_small:
                             await update.message.reply_video(
-                                video=video_file_small.read(),
+                                video=video_file_small, # <-- !! تم التحسين هنا !!
                                 caption="تفضل الفيديو (نسخة مضغوطة)! 📦"
                             )
                         await send_log(f"✅ **New Download (LQ)**\nUser: {user.first_name} (@{user.username})\nLink: `{message_text}`", context)
@@ -173,7 +180,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cleanup_file(cookie_file_path)
             
     else:
-        # --- !! تم تعديل النص هنا !! ---
         await update.message.reply_text(
             "الرجاء إرسال رابط (تيك توك)، (يوتيوب) أو (تويتر/X) صحيح. 🔗"
         )
