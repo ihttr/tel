@@ -50,7 +50,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=None
     )
     await update.message.reply_text(
-        "أرسل لي أي رابط فيديو من (تيك توك)، (يوتيوب) أو (تويتر/X) وسأقوم بإرساله لك. 🎬"
+        "Send me any video link from TikTok, YouTube, or Twitter/X, and I'll send it to you. 🎬"
     )
     user_info = f"User: {user.first_name} (@{user.username}, ID: {user.id})"
     await send_log(f"🚀 **Bot Started**\n{user_info}", context)
